@@ -1,0 +1,4 @@
+#! /usr/bin/env bash
+
+echo running...
+bin/Potential_Wells_1D

@@ -1,0 +1,8 @@
+# Ignore the following directories
+data /*
+
+# Ignore the executables
+bin /*
+
+# Ignore OS specific files
+.DS_Store
