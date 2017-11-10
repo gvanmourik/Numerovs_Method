@@ -1,5 +1,5 @@
 PROG_ROOT = $(HOME)/Desktop/phys404_hw6
-PROGRAM_NAME = Potential_Wells_1D
+PROGRAM_NAME = Potential_1D
 
 CC := g++
 

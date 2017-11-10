@@ -8,12 +8,14 @@
 class Numerov_Method {
 	
 private:
+	bool parabolic, wedge;
 	double a;								// Halfwidth of the well (fm)
 	double V_o;								// Potential in the well (MeV)
 	double c;								// 2*m/h_bar^2
 	double E;								// Constant energy (MeV)
 	double h;								// Step size
 	double range;							// User_defined range (fm)
+	double epsilon;
 	double initial_psi_0;
 	double initial_psi_1;
 	double numberOfPoints;					// User-defined number of points
@@ -26,27 +28,46 @@ private:
 public:
 
 	// Constructors and destructor
-	Numerov_Method(): a(2.0), V_o(-83.0), c(0.04819), range(4.0), numberOfPoints(500) 
+	Numerov_Method(): a(2.0), V_o(-83.0), c(0.04819), range(4.0), numberOfPoints(500), parabolic(true), wedge(false)
 	{	
 		initial_psi_0 = 1.0e-10;
 		initial_psi_1 = 1.0e-9;
 		populate_x();
 		populate_psi();
 	}
-	Numerov_Method(double user_E, double user_range, double user_numberOfPoints): a(2.0), V_o(-83.0), c(0.04819)
+	Numerov_Method(double user_range, double user_numberOfPoints, std::string type): a(2.0), V_o(-83.0), c(0.04819) 
 	{
 		initial_psi_0 = 1.0e-10;
 		initial_psi_1 = 1.0e-9;
-		E = user_E;
 		range = user_range;
 		numberOfPoints = user_numberOfPoints;
 
+		set_potential_type(type);
 		populate_x();
 		populate_psi();
 	}
 	~Numerov_Method(){}
 
-	
+
+	/**
+	 * @brief      Sets the potential type.
+	 *
+	 * @param[in]  type  The type for the potential
+	 */
+	void set_potential_type(std::string type)
+	{
+		if (type == "parabolic")
+		{
+			parabolic = true;
+			wedge = false;
+		}
+		else if (type == "wedge")
+		{
+			parabolic = false;
+			wedge = true;
+		}
+	}
+
 	/**
 	 * @brief      Function of energy
 	 *
@@ -57,10 +78,15 @@ public:
 	 */
 	double f_E_(double energy, bool even)
 	{
+		if ( !parabolic && !wedge )
+		{
+			printf("Potential type has NOT been set...try again\n");
+			return 0.0;
+		}
+
 		E = energy;
 		left_integration();
 		right_integration(even);
-
 		return gradient_difference();
 	}
 
@@ -167,23 +193,32 @@ public:
 	 */
 	double V_x(double x)
 	{
-		if ( -a <= x && x <= 0.0 )
+		if (parabolic)
 		{
-			return -V_o * (x + a) / a;
+			if ( std::abs(x) > a )
+			{
+				return 0.0;
+			}
+			else
+			{
+				return V_o * ( pow(x, 2) - pow( a,2) ) / pow(a, 2);
+			}
 		}
-		if ( 0.0 <= x && x <= a )
+
+		if (wedge)
 		{
-			return V_o * (x - a) / a;
+			if ( -a <= x && x <= 0.0 )
+			{
+				return -V_o * (x + a) / a;
+			}
+			if ( 0.0 <= x && x <= a )
+			{
+				return V_o * (x - a) / a;
+			}
+			return 0.0;
 		}
+
 		return 0.0;
-		// if ( std::abs(x) > a )
-		// {
-		// 	return 0.0;
-		// }
-		// else
-		// {
-		// 	return V_o * ( pow(x, 2)/pow(a, 2) - 1.0 );
-		// }
 	}
 
 	/**
