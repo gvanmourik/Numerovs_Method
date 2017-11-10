@@ -15,27 +15,29 @@ private:
 	double E;								// Constant energy (MeV)
 	double h;								// Step size
 	double range;							// User_defined range (fm)
-	double epsilon;
-	double initial_psi_0;
-	double initial_psi_1;
+	double epsilon;							// Level of error for the bisection method
+	double initial_psi_0;					// Psi for the initial spatial component
+	double initial_psi_1;					// Psi for the second spatial component
 	double numberOfPoints;					// User-defined number of points
 	std::vector<double> x_left;				// x-points left side of the well
 	std::vector<double> x_right;			// x-points right side of the well
 	std::vector<double> psi_left;			// psi for foward integration
 	std::vector<double> psi_right;			// psi for backwards integration
+	// std::vector<double> k;					// used to record the k values
 
 
 public:
 
 	// Constructors and destructor
-	Numerov_Method(): a(2.0), V_o(-83.0), c(0.04819), range(4.0), numberOfPoints(500), parabolic(true), wedge(false)
+	Numerov_Method(): a(2.0), V_o(-83.0), c(0.04819), range(4.0), numberOfPoints(500), parabolic(true), wedge(false), epsilon(1.0e-5)
 	{	
 		initial_psi_0 = 1.0e-10;
 		initial_psi_1 = 1.0e-9;
 		populate_x();
 		populate_psi();
 	}
-	Numerov_Method(double user_range, double user_numberOfPoints, std::string type): a(2.0), V_o(-83.0), c(0.04819) 
+	Numerov_Method(double user_range, double user_numberOfPoints, std::string type): a(2.0), V_o(-83.0), c(0.04819), 
+																					 parabolic(true), wedge(false), epsilon(1.0e-5)
 	{
 		initial_psi_0 = 1.0e-10;
 		initial_psi_1 = 1.0e-9;
@@ -84,6 +86,7 @@ public:
 			return 0.0;
 		}
 
+		// k.clear();
 		E = energy;
 		left_integration();
 		right_integration(even);
@@ -104,9 +107,15 @@ public:
 		psi_left[0] = initial_psi_0;
 		psi_left[1] = initial_psi_1;
 
+		// Collect initial k values
+		// k.push_back( k_x(x_left[0]) );
+		// k.push_back( k_x(x_left[1]) );
+
 		// printf("in left_integration()...\n");
 		for (int i = 2; i < max; i++)
 		{
+			// Collect k values
+			// k.push_back( k_x(x_left[i]) );
 			psi_left[i] = psi_next(i, h, "left");
 		}
 	}
@@ -136,8 +145,14 @@ public:
 			psi_right[1] = -initial_psi_1;
 		}
 
+		// Collect initial k values
+		// k.push_back( k_x(x_right[0]) );
+		// k.push_back( k_x(x_right[1]) );
+
 		for (int i = 2; i < max; i++)
 		{
+			// Collect k values
+			// k.push_back( k_x(x_right[i]) );
 			psi_right[i] = psi_next(i, h, "right");
 		}
 	}
@@ -181,13 +196,13 @@ public:
 	 */
 	double k_x(double x)
 	{
-		return c * ( E - V_x(x) );
+		return c * ( E + V_x(x) );
 	}
 
 	/**
 	 * @brief      Potential function V(x)
 	 *
-	 * @param[in]  x     The position
+	 * @param[in]  x     The spatial position
 	 *
 	 * @return     The value of the potential based on the position
 	 */
@@ -273,12 +288,137 @@ public:
 		return left_gradient - right_gradient + psi_left[zero] - psi_right[zero];
 	}
 
-	void plot_wavefunction(double energy, bool even, std::string label)
+	/**
+	 * @brief      Used to observe the roots the energy roots of the potential
+	 *
+	 * @param[in]  isEven  		Denotes looking for the gradient differences of even solns
+	 * @param[in]  energies   	The energies
+	 *
+	 * @return     A vector with the collection of gradient differences 
+	 */
+	std::vector<double> generate_f_E_values(bool isEven, std::vector<double> energies)
+	{
+		std::vector<double> f_E_values(energies.size());
+
+		for (int i = 0; i < energies.size(); i++)
+		{
+			//printf("Energy[%d] = %f\n", i, energies[i]);
+			f_E_values[i] = ( f_E_(energies[i], isEven) );
+		}
+
+		return f_E_values;
+	}
+
+	/**
+	 * @brief      Bisection Method - Find a root within the range a-->b
+	 *
+	 * @param[in]  a     Min value of the range 
+	 * @param[in]  b     Max value of the range
+	 *
+	 * @return     Energy in MeV corresponding to the root found
+	 */
+	double bisection_method(double a, double b, bool even)
+	{
+		double c, result_a, result_c;
+
+		while ( 1 )
+		{
+			c = (a+b)/2;
+			result_c = f_E_(c, even);
+			result_a = f_E_(a, even);
+
+			if ( result_c == 0 || acceptable_error(a, b) )
+			{
+				return c;
+			}
+			if ( sign(result_c) == sign(result_a) )
+			{
+				a = c;
+			}
+			else
+			{
+				b = c;			
+			}
+		}
+	}
+
+	/**
+	 * @brief      Determines if the error between two values is acceptable
+	 *
+	 * @param[in]  x_1   The first value
+	 * @param[in]  x_2   The second value
+	 *
+	 * @return     Bool answering if the error is acceptable
+	 */
+	bool acceptable_error(double x_1, double x_2)
+	{
+		if ( std::abs((x_2 - x_1) / x_1) < epsilon )
+		{
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * @brief      Determines the sign of a value
+	 *
+	 * @param[in]  x_1   The value
+	 *
+	 * @return     -1 if the value is negative, 1 otherwise
+	 */
+	int sign(double x_1)
+	{
+		if ( x_1 < 0 )
+		{
+			return -1;
+		}
+		return 1;
+	}
+
+	/**
+	 * @brief      Scale the wavefunction
+	 */
+	void scale_wavefunction()
+	{
+		double max_psi = *std::max_element( psi_left.begin(), psi_left.end() );
+		for (int i = 0; i < psi_left.size(); i++)
+		{
+			psi_left[i] /= max_psi;
+			psi_right[i] /= max_psi;
+		}
+	}
+
+	/**
+	 * @brief      Export calculated wavefunction
+	 *
+	 * @param[in]  energy  The energy
+	 * @param[in]  even    Indicates whether to look for the even or odd solution
+	 * @param[in]  label   The wavefunction label
+	 */
+	void export_wavefunction(double energy, bool even, std::string label)
 	{
 		f_E_(energy, even);
-		export_vector_to_file(x_left, psi_left, "psi_left_" + label + ".data");
-		export_vector_to_file(x_right, psi_right, "psi_right_" + label + ".data");
+		scale_wavefunction();
+		export_xy_to_file(x_left, psi_left, "psi_left_" + label + ".data");
+		export_xy_to_file(x_right, psi_right, "psi_right_" + label + ".data");
 	}
+
+	/**
+	 * @brief      Export collected k(x) values
+	 *
+	 * @param[in]  fileName  The file name
+	 */
+	// void export_k_(std::string fileName)
+	// {
+	// 	// Combine x_left and x_right
+	// 	std::vector<double> x = x_left;
+	// 	x.insert( x.end(), x_right.begin(), x_right.end() );
+
+	// 	// Run f_E_ at a given energy to generate k's. Energy and odd/even arbitrary.
+	// 	f_E_(0.0, true);
+
+	// 	export_xy_to_file(x, k, fileName);
+	// }
 
 	/**
  	 * @brief      Export two vectors to a data file
@@ -287,11 +427,9 @@ public:
  	 * @param[in]  y      A vector of the y-points
  	 * @param[in]  fname  The file name
  	 */
-	void export_vector_to_file(std::vector<double> x, std::vector<double> y, std::string fname)
+	void export_xy_to_file(std::vector<double> x, std::vector<double> y, std::string fname)
 	{
-		std::ofstream file("data/" + fname);
-		// std::copy(x.begin(), x.end(), std::ostream_iterator<double>(file));
-		// std::copy(y.begin(), y.end(), std::ostream_iterator<double>(file, "\n"));	
+		std::ofstream file("data/" + fname);	
 
 		if ( file.is_open() )
 	    {
